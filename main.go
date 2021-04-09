@@ -1,119 +1,88 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
-	"log"
-	"mime"
+	"flag"
 	"net/http"
-	"os"
-	"path"
-	"path/filepath"
 	"regexp"
-	"strings"
 
-	"github.com/gorilla/mux"
+	"go.uber.org/zap"
 )
 
-type FileHandler struct {
-	Config Config
+var logger *zap.Logger
+
+func middleware(c *Config, next http.Handler) http.Handler {
+
+	routes := c.Routes
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, v := range routes {
+
+			if v.Src == r.RequestURI {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if v.Src == "/" {
+				continue
+			}
+
+			re := regexp.MustCompile(v.Src)
+			match := re.MatchString(r.RequestURI)
+			if match {
+				for h, v := range v.Headers {
+					w.Header().Add(h, v)
+				}
+
+				hasRewrite := v.Rewrite != ""
+				if hasRewrite {
+
+					r.URL.Path = v.Rewrite
+				}
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
-func (f FileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	var ff *os.File
-	var err error
-
-	upath := r.URL.Path
-	if !strings.HasPrefix(upath, "/") {
-		upath = "/" + upath
-		r.URL.Path = upath
-	}
-	filename := path.Clean(upath)
-
-	routes := f.Config.Routes
-	fmt.Println(filename)
-
-	if filename == "/" {
-		ff, err = os.Open("./static/index.html")
-		if err != nil {
-			w.WriteHeader(http.StatusNotFound)
-			return
+func StripSlashes(next http.Handler) http.Handler {
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		var path string
+		if len(path) > 1 && path[len(path)-1] == '/' {
+			newPath := path[:len(path)-1]
+			r.URL.Path = newPath
 		}
-		defer ff.Close()
-		b, _ := ioutil.ReadAll(ff)
-
-		for _, r := range routes {
-			a, _ := regexp.Compile(r.Src)
-			isMatch := a.MatchString(filename)
-			if isMatch {
-				for k, v := range r.Headers {
-					w.Header().Add(k, v)
-				}
-			}
-		}
-		w.Write(b)
-		return
+		next.ServeHTTP(w, r)
 	}
-
-	filename = fmt.Sprintf("./static/%s", strings.TrimPrefix(filename, "/"))
-	fmt.Println(filename)
-	ff, err = os.Open(filename)
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	defer ff.Close()
-	bb, _ := ioutil.ReadAll(ff)
-
-	for _, r := range routes {
-		if r.Src == "/" {
-			continue
-		}
-		a, _ := regexp.Compile(r.Src)
-		isMatch := a.MatchString(filename)
-		if isMatch {
-			for k, v := range r.Headers {
-				w.Header().Set(k, v)
-			}
-		}
-	}
-
-	ctype := mime.TypeByExtension(filepath.Ext(filename))
-	w.Header().Set("Content-Type", ctype)
-
-	fmt.Println(ctype)
-
-	w.Write(bb)
+	return http.HandlerFunc(fn)
 }
 
 func main() {
 
-	var err error
-	var config Config
+	// ss := zap.Config{}
 
-	r := mux.NewRouter()
+	ss := zap.NewProductionConfig()
+	ss.DisableCaller = true
+	ss.DisableStacktrace = true
+	logger, _ = ss.Build()
 
-	b, err := ioutil.ReadFile("now.json")
+	defer logger.Sync()
+
+	logger.Info("S")
+	var nFlag = flag.String("c", "now.json", "help message for flag n")
+
+	flag.Parse()
+
+	c := ReadConfig(*nFlag)
+
+	strip := StripSlashes(
+		middleware(c, http.FileServer(http.Dir("./static"))),
+	)
+	http.Handle("/", strip)
+
+	logger.Info("Started at :3000")
+	err := http.ListenAndServe(":3000", nil)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error(err.Error())
 	}
-
-	err = json.Unmarshal(b, &config)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fileHandler := &FileHandler{
-		Config: config,
-	}
-
-	r.PathPrefix("/").Handler(fileHandler)
-	log.Println("Listening on :3000...")
-	err = http.ListenAndServe(":3000", r)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 }
