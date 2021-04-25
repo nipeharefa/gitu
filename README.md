@@ -1,7 +1,7 @@
 Gitu
 ====
 
-Simple Static File server with config, inspired from Vercel. With gitu you can configure cache and redirect like rules in another platform like firebase, vercel, and other.
+Simple Static File server with config, inspired from Vercel. With gitu you can configure cache, add custome header and redirect like rules in another platform like firebase, vercel, and other.
 ## Getting Started
 
 ## Using Docker
