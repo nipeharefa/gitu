@@ -30,5 +30,4 @@ WORKDIR /app
 
 COPY --from=builder /home/projects/sr/build/main /app
 
-EXPOSE ${APPLICATION_PORT}
 CMD ["/app/main"]
