@@ -1,16 +1,36 @@
 Gitu
 ====
 
-Simple Static File server with config.
-Inspired from Vercel.
+Simple Static File server with config, inspired from Vercel. With gitu you can configure cache and redirect like rules in another platform like firebase, vercel, and other.
+## Getting Started
 
+## Using Docker
 
-### Getting Started
+```
+FROM alpine:3.10
 
-TODO
+WORKDIR /app
+
+# USER apps
+RUN mkdir static
+
+COPY --from=docker.io/nipeharefa/gitu:0.0.6 /app/main main
+COPY --from=builder /app/build ./static/
+COPY now.json now.json
+
+CMD [ "/app/main" ]
+```
 
 
 ### Example
+
+Create static directory, and create static content
+```
+mkdir static && cd static
+touch index.html
+mkdir css jss
+touch css/index.css
+```
 
 Create new file configuration
 ```
